@@ -94,15 +94,24 @@ class URLShim extends URL {
    * @param {string} urlB
    */
   static rootDomainsMatch(urlA, urlB) {
-    const urlAInfo = new URL(urlA);
-    const urlBInfo = new URL(urlB);
+    let urlAInfo;
+    let urlBInfo;
+    try {
+      urlAInfo = new URL(urlA);
+      urlBInfo = new URL(urlB);
+    } catch (err) {
+      return false;
+    }
 
     if (!urlAInfo.hostname || !urlBInfo.hostname) {
       return false;
     }
 
-    const urlARootDomain = urlAInfo.hostname.split('.').slice(-2).join('.');
-    const urlBRootDomain = urlBInfo.hostname.split('.').slice(-2).join('.');
+    const isTldA = isTldPlusDomain(urlAInfo.hostname);
+    const isTldB = isTldPlusDomain(urlBInfo.hostname);
+
+    const urlARootDomain = urlAInfo.hostname.split('.').slice(isTldA ? -3 : -2).join('.');
+    const urlBRootDomain = urlBInfo.hostname.split('.').slice(isTldB ? -3 : -2).join('.');
 
     return urlARootDomain === urlBRootDomain;
   }

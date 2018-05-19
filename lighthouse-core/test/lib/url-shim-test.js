@@ -92,6 +92,37 @@ describe('URL Shim', () => {
     assert.equal(URL.getOrigin(urlD), null);
   });
 
+  describe('rootDomainsMatch', () => {
+    it('matches a subdomain and a root domain', () => {
+
+      const urlA = 'http://example.com/js/test.js';
+      const urlB = 'http://example.com/';
+      const urlC = 'http://sub.example.com/js/test.js';
+      const urlD = 'http://sub.otherdomain.com/js/test.js';
+
+      assert.ok(URL.rootDomainsMatch(urlA, urlB));
+      assert.ok(URL.rootDomainsMatch(urlA, urlC));
+      assert.ok(!URL.rootDomainsMatch(urlA, urlD));
+      assert.ok(!URL.rootDomainsMatch(urlB, urlD));
+    });
+
+    it(`doesn't break on urls without a valid host`, () => {
+      const urlA = 'http://example.com/js/test.js';
+      const urlB = 'data:image/jpeg;base64,foobar';
+      const urlC = 'anonymous:90';
+      const urlD = '!!garbage';
+      const urlE = 'file:///opt/lighthouse/index.js';
+
+      assert.ok(!URL.rootDomainsMatch(urlA, urlB));
+      assert.ok(!URL.rootDomainsMatch(urlA, urlC));
+      assert.ok(!URL.rootDomainsMatch(urlA, urlD));
+      assert.ok(!URL.rootDomainsMatch(urlA, urlE));
+      assert.ok(!URL.rootDomainsMatch(urlB, urlC));
+      assert.ok(!URL.rootDomainsMatch(urlB, urlD));
+      assert.ok(!URL.rootDomainsMatch(urlB, urlE));
+    });
+  });
+
   describe('getURLDisplayName', () => {
     it('respects numPathParts option', () => {
       const url = 'http://example.com/a/deep/nested/file.css';
