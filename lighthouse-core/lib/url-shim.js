@@ -17,6 +17,24 @@ const Util = require('../report/html/renderer/util.js');
 const URL = /** @type {!Window["URL"]} */ (typeof self !== 'undefined' && self.URL) ||
     require('url').URL;
 
+const tldPlusOne = {
+  ar: ['com', 'edu', 'gob', 'int', 'mil', 'mar', 'net', 'org', 'tur', 'musica'],
+  at: ['co', 'or', 'priv', 'ac'],
+  fr: ['avocat', 'aeroport', 'veterinaire'],
+  nz: ['ac', 'co', 'school', 'cri', 'govt', 'mil', 'parliament'],
+  il: ['org', 'k12', 'gov', 'muni', 'idf'],
+  ru: ['com', 'edu', 'gob', 'int', 'mil', 'mar', 'net', 'org', 'tur', 'musica'],
+  za: ['ac', 'gov', 'law', 'mil', 'nom', 'school', 'net'],
+  kr: ['ac', 'co', 'es', 'go', 'hs', 'kg', 'mil', 'ms', 'ne', 'or', 'pe', 're', 'sc', 'busan',
+    'chungbuk', 'chungnam', 'daegu', 'daejeon', 'gangwon', 'gwangju', 'gyeongbuk', 'gyeonggi',
+    'gyeongnam', 'incheon', 'jeju', 'jeonbuk', 'jeonnam', 'seoul', 'ulsan'],
+  es: ['org', 'gob'],
+  tr: ['com', 'info', 'biz', 'net', 'org', 'web', 'gen', 'tv', 'av', 'dr', 'bbs', 'name', 'tel',
+    'gov', 'bel', 'pol', 'mil', 'k12', 'edu', 'kep', 'nc', 'gov.nc'],
+  ua: ['gov', 'com', 'in', 'org', 'net', 'edu'],
+  uk: ['co', 'org', 'me', 'ltd', 'plc', 'net', 'sch', 'ac', 'gov', 'mod', 'mil', 'nhs', 'police'],
+};
+
 /**
  * There is fancy URL rewriting logic for the chrome://settings page that we need to work around.
  * Why? Special handling was added by Chrome team to allow a pushState transition between chrome:// pages.
@@ -30,6 +48,31 @@ function rewriteChromeInternalUrl(url) {
   //   https://github.com/GoogleChrome/lighthouse/pull/3941#discussion_r154026009
   if (url.endsWith('/')) url = url.replace(/\/$/, '');
   return url.replace(/^chrome:\/\/chrome\//, 'chrome://');
+}
+
+/**
+ * Checks if an url contains a TLD plus one domain
+ *
+ * @param {string} url
+ * @return {boolean}
+ */
+function isTldPlusDomain(url) {
+  try {
+    const parsedUrl = new URL(url);
+    if (!parsedUrl.hostname) {
+      return false;
+    }
+
+    const tld = parsedUrl.hostname.split('.').slice(-1)[0];
+    if (!tldPlusOne[tld]) {
+      return false;
+    }
+
+    const tldPlusOneRegex = new RegExp(`\\.(${tldPlusOne[tld].join('|')})\\.${tld}`);
+    return tldPlusOneRegex.test(url);
+  } catch (err) {
+    return false;
+  }
 }
 
 class URLShim extends URL {
@@ -107,11 +150,11 @@ class URLShim extends URL {
       return false;
     }
 
-    const isTldA = isTldPlusDomain(urlAInfo.hostname);
-    const isTldB = isTldPlusDomain(urlBInfo.hostname);
+    const isTldPlusOneA = isTldPlusDomain(urlA);
+    const isTldPlusOneB = isTldPlusDomain(urlB);
 
-    const urlARootDomain = urlAInfo.hostname.split('.').slice(isTldA ? -3 : -2).join('.');
-    const urlBRootDomain = urlBInfo.hostname.split('.').slice(isTldB ? -3 : -2).join('.');
+    const urlARootDomain = urlAInfo.hostname.split('.').slice(isTldPlusOneA ? -3 : -2).join('.');
+    const urlBRootDomain = urlBInfo.hostname.split('.').slice(isTldPlusOneB ? -3 : -2).join('.');
 
     return urlARootDomain === urlBRootDomain;
   }
