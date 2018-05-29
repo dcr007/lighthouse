@@ -7,7 +7,6 @@
 import Gatherer = require('../lighthouse-core/gather/gatherers/gatherer.js');
 import Audit = require('../lighthouse-core/audits/audit.js');
 
-
 declare global {
   module LH {
     /**
@@ -15,10 +14,11 @@ declare global {
      */
     export interface Config {
       settings: Config.Settings;
-      passes?: Config.Pass[];
-      audits?: Config.AuditDefn[];
-      categories?: Record<string, Config.Category>;
-      groups?: Record<string, Config.Group>;
+      // TODO(bckenny): these should actually be nullable, not optional?
+      passes: Config.Pass[] | null;
+      audits: Config.AuditDefn[] | null;
+      categories: Record<string, Config.Category> | null;
+      groups: Record<string, Config.Group> | null;
     }
 
     module Config {
@@ -26,10 +26,12 @@ declare global {
        * The pre-normalization Lighthouse Config format.
        */
       export interface Json {
+        extends?: 'lighthouse:default' | 'lighthouse:full' | string | boolean;
         settings?: SettingsJson;
         passes?: PassJson[];
+        audits?: Config.AuditJson[];
         categories?: Record<string, CategoryJson>;
-        groups?: GroupJson[];
+        groups?: Record<string, Config.GroupJson>;
       }
 
       export interface SettingsJson extends SharedFlagsSettings {
@@ -71,6 +73,14 @@ declare global {
         description: string;
       }
 
+      export type AuditJson = {
+        path: string,
+        options?: {};
+      } | {
+        implementation: typeof Audit;
+        options?: {};
+      } | typeof Audit | string;
+
       /**
        * Reference to an audit member of a category and how its score should be
        * weighted and how its results grouped with other members.
@@ -81,7 +91,6 @@ declare global {
         group?: string;
       }
 
-      // TODO(bckenny): we likely don't want to require all these
       export interface Settings extends Required<SettingsJson> {
         throttling: Required<ThrottlingSettings>;
       }
@@ -98,6 +107,7 @@ declare global {
 
       export interface AuditDefn {
         implementation: typeof Audit;
+        path?: string;
         options: {};
       }
 
