@@ -23,6 +23,7 @@ const Runner = require('../runner');
 // TODO(bckenny): how to start moving types from externs to Config class?
 // TODO(bckenny): make LH.Config a valid LH.Config.Json
 // TODO(bckenny): add test for round trip json -> Config -> back into Config (and unchanged)
+// TODO(bckenny): test above including extends and only() to make sure they're indompetent
 
 /**
  * @param {LH.Config['passes']} passes
@@ -229,6 +230,7 @@ function cloneArrayWithPluginSafety(array) {
 }
 
 /**
+ * // TODO(bckenny): could adopt "jsonified" type to ensure T is jsonifiable: https://github.com/Microsoft/TypeScript/issues/21838
  * @template T
  * @param {T} json
  * @return {T}
@@ -238,7 +240,8 @@ function deepClone(json) {
 }
 
 /**
- * // TODO(bckenny): move type to externs, extending something with passes and gatherers? to support ConfigJson and Config
+ * Deep clone a ConfigJson, copying over any "live" gatherer or audit that
+ * wouldn't make the JSON round trip.
  * @param {LH.Config.Json} json
  * @return {LH.Config.Json}
  */
@@ -247,10 +250,11 @@ function deepCloneConfigJson(json) {
 
   // Copy arrays that could contain plugins to allow for programmatic
   // injection of plugins.
-  if (Array.isArray(json.passes)) {
-    cloned.passes.forEach((pass, i) => {
+  if (Array.isArray(cloned.passes) && Array.isArray(json.passes)) {
+    for (let i = 0; i < cloned.passes.length; i++) {
+      const pass = cloned.passes[i];
       pass.gatherers = cloneArrayWithPluginSafety(json.passes[i].gatherers || []);
-    });
+    }
   }
 
   if (Array.isArray(json.audits)) {
@@ -270,6 +274,7 @@ class Config {
     let configPath = flags && flags.configPath;
 
     if (!configJSON) {
+      configJSON = defaultConfig;
       configPath = path.resolve(__dirname, defaultConfigPath);
     }
 
@@ -278,7 +283,7 @@ class Config {
     }
 
     // We don't want to mutate the original config object
-    configJSON = deepCloneConfigJson(configJSON || defaultConfig);
+    configJSON = deepCloneConfigJson(configJSON);
 
     // Extend the default or full config if specified
     if (configJSON.extends === 'lighthouse:full') {
@@ -313,25 +318,14 @@ class Config {
     /** @type {?Record<string, LH.Config.Group>} */
     const groups = configJSON.groups || null;
 
-    // Generate a limited config if specified
-    if (Array.isArray(settings.onlyCategories) ||
-        Array.isArray(settings.onlyAudits) ||
-        Array.isArray(settings.skipAudits)) {
-      const categoryIds = settings.onlyCategories;
-      const auditIds = settings.onlyAudits;
-      const skipAuditIds = settings.skipAudits;
-      const currentPipeline = {passes, audits, categories};
-      // TODO(bckenny): turn into just Config.filterIfNeeded(this)? generateNewFilteredConfig already has all the above if statements and everything
-      ({passes, audits, categories} = Config.generateNewFilteredConfig(currentPipeline, categoryIds,
-        auditIds, skipAuditIds));
-    }
-
     this._configDir = configDir;
     this._settings = settings;
     this._passes = passes;
     this._audits = audits;
     this._categories = categories;
     this._groups = groups;
+
+    Config.filterConfigIfNeeded(this);
 
     validatePasses(this._passes, this._audits);
     validateCategories(this._categories, this._audits, this._groups);
@@ -503,18 +497,18 @@ class Config {
   }
 
   /**
-   * Filter out any unrequested items from the config, based on requested top-level categories.
-   * @param {Pick<LH.Config, 'passes'|'audits'|'categories'>} oldConfig
-   * @param {?Array<string>=} categoryIds ID values of categories to include
-   * @param {?Array<string>=} auditIds ID values of categories to include
-   * @param {?Array<string>=} skipAuditIds ID values of categories to exclude
-   * @return {Pick<LH.Config, 'passes'|'audits'|'categories'>} A new config
+   * Filter out any unrequested items from the config, based on requested categories or audits.
+   * @param {Config} config
    */
-  static generateNewFilteredConfig(oldConfig, categoryIds, auditIds, skipAuditIds) {
-    // 0. Clone config to avoid mutating it
-    // TODO(bckenny): deepClone type
-    /** @type {Pick<LH.Config, 'passes'|'audits'|'categories'>} */
-    const config = deepCloneConfigJson(oldConfig);
+  static filterConfigIfNeeded(config) {
+    // 0. Extract filtering information, if any.
+    const categoryIds = config.settings.onlyCategories;
+    const auditIds = config.settings.onlyAudits;
+    const skipAuditIds = config.settings.skipAudits;
+
+    if (!categoryIds && !auditIds && !skipAuditIds) {
+      return config;
+    }
 
     // 1. Filter to just the chosen categories/audits
     const {categories, requestedAuditNames} = Config.filterCategoriesAndAudits(
@@ -534,25 +528,28 @@ class Config {
     // 4. Filter to only the neccessary passes
     const passes = Config.generatePassesNeededByGatherers(config.passes, requiredGathererIds);
     
-    return {passes, categories, audits};
+    config._categories = categories;
+    config._audits = audits;
+    config._passes = passes;
   }
 
   /**
    * Filter out any unrequested categories or audits from the categories object.
    * @param {LH.Config['categories']} oldCategories
-   * @param {?Array<string>=} includedCategoryIds
-   * @param {?Array<string>=} includedAuditIds
-   * @param {?Array<string>=} skippedAuditIds
+   * @param {?Array<string>} includedCategoryIds
+   * @param {?Array<string>} includedAuditIds
+   * @param {?Array<string>} skippedAuditIds
    * @return {{categories: LH.Config['categories'], requestedAuditNames: Set<string>}}
    */
   static filterCategoriesAndAudits(oldCategories, includedCategoryIds, includedAuditIds, skippedAuditIds) {
+    if (!oldCategories) {
+      return {categories: null, requestedAuditNames: new Set()};
+    }
+
     if (includedAuditIds && skippedAuditIds) {
       throw new Error('Cannot set both skipAudits and onlyAudits');
     }
 
-    if (!oldCategories) {
-      return {categories: null, requestedAuditNames: new Set()};
-    }
     /** @type {NonNullable<LH.Config['categories']>} */
     const categories = {};
     const filterByIncludedCategory = !!includedCategoryIds;
@@ -591,8 +588,6 @@ class Config {
     skipAuditIds.forEach(id => includedAudits.delete(id));
 
     Object.keys(oldCategories).forEach(categoryId => {
-      // TODO(bckenny): no live plugins, so can just do regular deep clone here
-      /** @type {LH.Config.Category} */
       const category = deepClone(oldCategories[categoryId]);
 
       if (filterByIncludedCategory && filterByIncludedAudit) {

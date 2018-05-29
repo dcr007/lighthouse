@@ -15,7 +15,7 @@ const Audit = require('../../audits/audit');
 
 /* eslint-env mocha */
 
-describe.only('Config', () => {
+describe('Config', () => {
   let origConfig;
   beforeEach(() => {
     origConfig = JSON.parse(JSON.stringify(defaultConfig));
